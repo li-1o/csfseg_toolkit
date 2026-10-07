@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "csfseg-toolkit"
+version = "0.1.0"
+description = "3D U-Net CSF segmentation and CSF time-series extraction for preprocessed 4D fMRI."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy",
+  "scipy",
+  "nibabel",
+  "pandas",
+  "matplotlib",
+  "pyyaml",
+  "tqdm",
+  "torch",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+]
+
+[project.scripts]
+csfseg = "csfseg.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["csfseg*"]
