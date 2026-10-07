@@ -86,7 +86,8 @@ It does:
 - restore the bottom10 prediction into the input NIfTI space
 - save probability and mask NIfTI files
 - make prediction QC
-- extract all L0-L3 mask voxel time series
+- extract mask voxel time series from checkpoint-approved layers (`L0-L2` for
+  the ADNI baseline; legacy default `L0-L3` without a contract)
 - automatically choose a candidate layer
 - export an auto selected voxel table
 - make selected time-series QC
@@ -113,6 +114,10 @@ reports/selection_template.csv
 reports/auto_selection_summary.csv
 logs/subjects/<output_id>.log
 ```
+
+With a contract-bearing checkpoint, prediction also writes
+`masks/<output_id>_csf_mask_bottom10_raw.nii.gz`. The main mask is restricted to
+the contract-approved layers; the raw file is retained for QC.
 
 Use `predict` when you want to test or rerun one input by itself. Use `batch`
 when you already have an input path file and want reports across many inputs.

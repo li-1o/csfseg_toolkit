@@ -81,8 +81,9 @@ row 3: tsnr z-score, local L0-L9
 ```
 
 This is the actual bottom volume that will be sent to the model. Low layers
-`L0-L3` are marked with `*` because these are the layers we first inspect when
-the ROI may start at L0 or, in some subjects, at L1.
+Candidate layers are marked with `*`. A contract-bearing ADNI baseline
+checkpoint uses `L0-L2`; the older checkpoint-free preprocessing view uses the
+legacy `L0-L3` default.
 
 The patch QC layout is:
 
@@ -106,7 +107,8 @@ After `csfseg predict`, the toolkit also writes:
 csfseg_outputs/qc/sub-001_ses-01_task-rest_run-01_bold_prediction_qc.png
 ```
 
-The first prediction QC layout focuses on low layers `L0-L3`:
+Prediction QC uses the checkpoint-approved layers (`L0-L2` for the ADNI
+baseline; legacy default `L0-L3` when no contract is present):
 
 ```text
 row 1: normalized mean image, L0 L1 L2 L3
@@ -137,9 +139,9 @@ needs to show whether the model learned to shift the ROI upward.
 
 ## Time-Series QC
 
-The full voxel table keeps every L0-L3 mask voxel. The selected export then
-uses one selected layer, excludes isolated voxels, and excludes voxels with
-obvious zero dropout.
+The full voxel table keeps every mask voxel from the approved candidate layers.
+The selected export then uses one selected layer, excludes isolated voxels, and
+excludes voxels with obvious zero dropout.
 
 Zero dropout is tagged per voxel:
 

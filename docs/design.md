@@ -91,8 +91,10 @@ For the first version, the rule is deliberately simple:
 - take `z=0:10` as the model input depth
 - keep the z direction as part of the 3D U-Net input, because the vertical
   structure carries useful information
-- after prediction, keep the full bottom 10-layer output
-- for QC and later final-layer selection, first inspect low layers `L0-L3`
+- retain the raw bottom 10-layer threshold result for QC
+- let checkpoint metadata define the deliverable and QC layers; the ADNI
+  baseline keeps `L0-L2`, while checkpoints without a contract use the legacy
+  `L0-L3` candidate default
 - choose the final signal layer later from the model prediction, rather than
   assuming that `L0` must contain usable ROI
 - rely on QC figures so users can catch cases where `z=0` is not the true
@@ -144,19 +146,23 @@ model did not see them.
 
 ## Prediction QC And Extraction
 
-After prediction, the toolkit keeps the complete bottom10 mask as the main mask
-output. It does not create a separate single-layer final mask by default. Layer
-choice is represented as metadata and as a selected voxel table.
+After prediction, behavior follows checkpoint metadata. A contract-bearing ADNI
+baseline checkpoint saves the unfiltered threshold result as a raw bottom-ten
+QC mask and exports a main mask limited to `L0-L2`. A checkpoint without a
+segmentation contract uses the legacy `L0-L3` candidate default. Layer choice
+is also represented in metadata and in the selected voxel table.
 
 The post-prediction flow is:
 
 ```text
-bottom10 mask
-→ inspect L0-L3
+thresholded bottom10 prediction
+→ preserve raw mask for QC when a contract is present
+→ zero layers not allowed by the checkpoint contract
+→ inspect the contract-approved layers (L0-L2 for the ADNI baseline)
 → label 2D connected components in each layer
 → tag isolated voxels where component_size == 1
 → suggest the first candidate layer, preferring L0 then L1
-→ extract every L0-L3 mask voxel time series into voxel_table.csv
+→ extract each allowed-layer mask voxel time series into voxel_table.csv
 → export an auto selected subset
 ```
 

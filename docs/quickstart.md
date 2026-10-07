@@ -131,9 +131,12 @@ logs/run_<run_id>.log
 input_paths_used.csv
 ```
 
-The full voxel table keeps all L0-L3 mask voxels. The auto selected table keeps
-the automatically selected layer, excluding isolated voxels and zero-dropout
-voxels.
+For a contract-bearing ADNI baseline checkpoint, prediction also writes
+`masks/<output_id>_csf_mask_bottom10_raw.nii.gz`. The raw file preserves the
+bottom-ten threshold result for QC; the main mask and voxel table are limited
+to `L0-L2`. Checkpoints without a contract use the legacy `L0-L3` candidate
+default. The auto selected table keeps one approved layer, excluding isolated
+voxels and zero-dropout voxels.
 
 ## 6. Review QC And Adjust If Needed
 

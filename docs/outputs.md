@@ -67,10 +67,11 @@ qc/sub-001_ses-01_task-rest_run-01_bold_prediction_qc.png
 
 The probability map is a 3D float image in the input NIfTI space. The mask is a
 3D uint8 image made by thresholding that probability map; the default threshold
-is `0.5`. In the first version, the model only predicts the bottom `z=0:10`
-block, so voxels outside that block are written as zero. The prediction QC
-figure focuses on low layers `L0-L3` because the usable ROI may start at L0 or
-shift upward to L1.
+is `0.5`. The model predicts the bottom `z=0:10` block, so voxels outside that
+block are zero. With a contract-bearing ADNI baseline checkpoint, a separate
+`*_bottom10_raw.nii.gz` keeps the raw threshold result while the main mask and
+prediction QC use `L0-L2`. A checkpoint without a contract uses the legacy
+`L0-L3` candidate default.
 
 After prediction, the toolkit also writes:
 
@@ -81,8 +82,8 @@ selected/auto/sub-001_ses-01_task-rest_run-01_bold_L0_auto_selected_voxels.csv
 selected/auto/sub-001_ses-01_task-rest_run-01_bold_L0_auto_timeseries_qc.png
 ```
 
-`voxel_table.csv` is the full data source for `L0-L3`: all mask voxels are
-kept, including isolated voxels and voxels with zero-dropout warnings. The
+`voxel_table.csv` is the full data source for checkpoint-approved layers: all
+mask voxels are kept, including isolated voxels and voxels with zero-dropout warnings. The
 `selected/auto` table is the default analysis-ready subset: selected layer,
 non-isolated voxels, and no zero-dropout voxels.
 

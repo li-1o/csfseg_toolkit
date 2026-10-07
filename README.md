@@ -1,94 +1,128 @@
 # CSFSeg Toolkit
 
-CSFSeg Toolkit segments bottom-slice CSF from a preprocessed 4D fMRI NIfTI file
-and extracts voxel-level CSF time series.
+An auditable 3-channel 3D U-Net workflow for segmenting inferior CSF regions
+from lightly preprocessed 4D fMRI and extracting voxel-level time series.
 
-The [ADNI baseline record](docs/adni_baseline.md) documents the fine-tuning
-protocol and aggregate validation results. Its final mask is limited to L0-L2;
-the network uses ten slices of context. Participant data, case-level QC and
-trained weights are not distributed through this repository.
+This repository records the model architecture, training workflow, inference
+pipeline, QC tools, tests, and aggregate ADNI baseline results. Participant
+data, case-level outputs, trained weights, and private infrastructure details
+are not distributed here.
 
-It is built for one focused workflow:
+## ADNI Baseline
 
-1. read a preprocessed 4D fMRI NIfTI,
-2. compute model input channels: temporal mean, temporal std, and tSNR,
-3. run a 3D U-Net CSF segmentation model,
-4. save the bottom10 CSF probability map and binary mask,
-5. extract L0-L3 mask voxel time series,
-6. write QC figures and selected voxel tables.
+| Item | Result |
+| --- | ---: |
+| Data | 50 sessions / 44 participants |
+| Participant-grouped split | 41 train sessions / 9 validation sessions |
+| Best checkpoint | Epoch 15 of 50 |
+| Validation session-macro Dice | **0.8309** |
+| Median / range | 0.8182 / 0.7778–0.9101 |
+| Sessions with Dice >= 0.8 | 6 / 9 |
 
-The toolkit does not prepare raw fMRI data. Motion correction, distortion
-correction, registration, and other dataset-specific preprocessing should
-already be done before the data comes here.
+The validation participants did not occur in training, but the same validation
+set selected the best epoch. These numbers are therefore internal validation,
+not an independent test estimate. See the full [fine-tuning record](docs/adni_baseline.md)
+for the protocol and interpretation boundary.
 
-## Install
+## Method
 
-Recommended on a research server:
+```mermaid
+flowchart LR
+    A[Motion-corrected native-space<br/>4D fMRI] --> B[Temporal mean<br/>standard deviation<br/>tSNR]
+    B --> C[Nonzero z-score<br/>bottom 10 slices<br/>128 x 128 XY pad]
+    C --> D[3-channel 3D U-Net<br/>no Z downsampling]
+    D --> E[Probability map]
+    E --> F[Threshold and restore<br/>to input grid]
+    F --> G[Final L0-L2 mask<br/>QC and voxel time series]
+```
+
+The network uses ten inferior slices as 3D spatial context while preserving
+their Z resolution through every encoder and decoder stage. The baseline
+checkpoint carries a segmentation contract: mean/std/tSNR channels, nonzero
+z-score normalization, ten input slices, L0-L2 final output, and no automatic
+reorientation or registration.
+
+Technical safeguards include:
+
+- participant-level train/validation separation;
+- image-label geometry, orientation, binary-label, and checksum gates;
+- padding-aware BCE + soft Dice loss over all ten real input layers;
+- checkpoint metadata checks shared by training and inference;
+- atomic best/last checkpoint writes and verified resume behavior;
+- restricted `weights_only=True` checkpoint loading;
+- preservation of the raw bottom-ten prediction for QC while exporting the
+  contract-approved L0-L2 mask.
+
+## Input Contract
+
+The ADNI baseline starts from native-space 4D fMRI after motion correction and
+before temporal filtering, nuisance regression, spatial smoothing, or template
+registration. Other datasets may use another explicitly documented preparation,
+but a trained checkpoint is only valid for the preprocessing contract it was
+trained with.
+
+The software does not turn raw DICOM data into a model-ready file. It also does
+not silently reorient or register an input to make it pass geometry checks.
+
+## Install and Verify
 
 ```bash
 conda env create -f environment.yml
 conda activate csfseg
-pip install -e .
+pip install -e '.[dev]'
+pytest -q tests
 ```
 
-For an existing Python environment:
-
-```bash
-pip install -e .
-```
-
-## Smoke Test
-
-Before using real data, you can run a tiny end-to-end demo:
+Run the synthetic end-to-end smoke test:
 
 ```bash
 python examples/run_smoke_test.py --overwrite
 ```
 
-It creates synthetic 4D fMRI files and a random 3-channel checkpoint, then runs
-the real CLI commands from path checking through batch export. This only checks
-that the workflow runs and writes outputs. The random checkpoint is not a model
-for analysis.
+The smoke test creates synthetic 4D data and a random 3-channel checkpoint. It
+checks installation and output wiring; it does not test segmentation quality.
 
-## Quick Start
+## Inference
 
-Run one file:
+A compatible trained checkpoint is required and is intentionally not included
+in this public repository.
 
 ```bash
 csfseg predict \
-  --input /data/sub-001_ses-01_task-rest_run-01_bold.nii.gz \
+  --input /data/example_motion_corrected_4d.nii.gz \
   --out-dir /data/csfseg_outputs \
-  --checkpoint /models/best_3ch.pt
+  --checkpoint /models/compatible_3ch_checkpoint.pt
 ```
 
-The output directory will contain:
-
-```text
-csfseg_outputs/
-├── masks/
-├── probabilities/
-├── timeseries/
-├── selected/
-├── qc/
-├── reports/
-└── logs/
-```
-
-The main files are:
+With a contract-bearing baseline checkpoint, the main outputs are:
 
 ```text
 probabilities/<output_id>_csf_prob.nii.gz
+masks/<output_id>_csf_mask_bottom10_raw.nii.gz
 masks/<output_id>_csf_mask_bottom10.nii.gz
 qc/<output_id>_prediction_qc.png
 timeseries/<output_id>_voxel_table.csv
 selected/auto/<output_id>_<layer>_auto_selected_voxels.csv
-selected/auto/<output_id>_<layer>_auto_timeseries_qc.png
 reports/selection_template.csv
 logs/subjects/<output_id>.log
 ```
 
-After checking QC, edit `reports/selection_template.csv` if a run should use a
-different layer or be excluded, then export a new selected version:
+The historical `bottom10` name is retained for compatibility. For the ADNI
+baseline, `*_raw.nii.gz` contains the unfiltered bottom-ten threshold result;
+the main mask keeps L0-L2 and writes L3+ as zero according to the checkpoint
+contract. Time-series extraction and QC use the same allowed layers.
+
+For batch inference:
+
+```bash
+csfseg batch \
+  --input-paths examples/input_paths.txt \
+  --out-dir /data/csfseg_outputs \
+  --checkpoint /models/compatible_3ch_checkpoint.pt \
+  --skip-existing
+```
+
+After QC, a layer selection can be revised without rerunning the network:
 
 ```bash
 csfseg select-voxels \
@@ -97,41 +131,48 @@ csfseg select-voxels \
   --selection-name manual_v1
 ```
 
-For many files, put paths in a TXT/CSV/TSV file and run:
+## Training and Reproduction
+
+Training is driven by an explicit participant identity table and a manifest of
+same-grid 4D inputs and binary labels:
 
 ```bash
-csfseg batch \
-  --input-paths input_paths.txt \
-  --out-dir /data/csfseg_outputs \
-  --checkpoint /models/best_3ch.pt \
-  --skip-existing
+csfseg prepare-training \
+  --manifest /path/to/pairs.json \
+  --identity-csv /path/to/participant_identity.csv \
+  --output /path/to/grouped_manifest.json
+
+csfseg train \
+  --config examples/train_baseline.yaml \
+  --out-dir /path/to/new_training_run
 ```
 
-The first batch version runs inputs one at a time, but writes batch reports and
-detailed per-input logs so large runs are easier to resume and debug.
+The example configuration contains placeholders only. Authorized data and
+initialization weights must be supplied separately.
 
-## Current Commands
+## Scope and Limitations
 
-```text
-csfseg check-manifest       validate an input path file
-csfseg check-preprocessing  make QC for model input preparation
-csfseg predict              run single-file prediction and extraction
-csfseg batch                run prediction for a path file
-csfseg select-voxels        re-export selected voxels after QC review
-csfseg init-3ch-checkpoint  development helper for finetuning setup
-```
+- This is a research segmentation aid, not a clinical device.
+- The reported nine-session validation set also selected the checkpoint.
+- Agreement with one manual label set does not prove anatomical ground truth.
+- New scanners, protocols, preprocessing chains, orientations, and populations
+  require fresh QC and validation.
+- Generated logs and NIfTI outputs can retain source paths or header metadata;
+  they are not automatically anonymized publication artifacts.
 
 ## Documentation
 
-Start here:
-
-- [docs/quickstart.md](docs/quickstart.md) for a step-by-step first run
-- [docs/input_format.md](docs/input_format.md) for path files, `input_path`, and `output_id`
-- [docs/commands.md](docs/commands.md) for command-by-command usage
-- [docs/outputs.md](docs/outputs.md) for output files
-- [docs/qc.md](docs/qc.md) for QC figures
-- [docs/model_checkpoints.md](docs/model_checkpoints.md) for checkpoint files
+- [ADNI baseline record](docs/adni_baseline.md)
+- [Quickstart](docs/quickstart.md)
+- [Input formats](docs/input_format.md)
+- [Commands](docs/commands.md)
+- [Output files](docs/outputs.md)
+- [QC figures](docs/qc.md)
+- [Model checkpoints](docs/model_checkpoints.md)
+- [Design notes](docs/design.md)
 
 ## License
 
-This project is released under the [MIT License](LICENSE).
+The software is released under the [MIT License](LICENSE). The license does not
+grant rights to participant data, derived case-level artifacts, or third-party
+model weights.
