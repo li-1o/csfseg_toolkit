@@ -3,6 +3,11 @@
 CSFSeg Toolkit segments bottom-slice CSF from a preprocessed 4D fMRI NIfTI file
 and extracts voxel-level CSF time series.
 
+The [ADNI baseline record](docs/adni_baseline.md) documents the fine-tuning
+protocol and aggregate validation results. Its final mask is limited to L0-L2;
+the network uses ten slices of context. Participant data, case-level QC and
+trained weights are not distributed through this repository.
+
 It is built for one focused workflow:
 
 1. read a preprocessed 4D fMRI NIfTI,

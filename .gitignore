@@ -8,11 +8,38 @@ __pycache__/
 venv/
 env/
 
+# Restricted datasets and case-level artifacts: never stage these directories.
+roi_handoff/
+roihandoff/
+data/
+datasets/
+reports/
+restricted_audit/
+runs/
+
+# Local credentials and machine-specific configuration.
+.env
+.env.*
+!.env.example
+.ssh/
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+*.local.yaml
+*.local.yml
+*.local.json
+
 *.nii
 *.nii.gz
 *.pt
 *.pth
 *.ckpt
+*.safetensors
+*.pt.json
+*.pth.json
+*.ckpt.json
+*.safetensors.json
 checkpoints/*.pt.json
 checkpoints/*.pth.json
 checkpoints/*.ckpt.json

@@ -9,6 +9,18 @@ from csfseg.inference.checkpoint import (
 from csfseg.models.unet3d import UNet3D_NoZDown
 
 
+def test_checkpoint_never_falls_back_to_unrestricted_load(tmp_path, monkeypatch):
+    calls = []
+    def unsupported(*args, **kwargs):
+        calls.append(kwargs)
+        raise TypeError("unsupported weights_only")
+    monkeypatch.setattr(torch, "load", unsupported)
+    with pytest.raises(RuntimeError, match="unrestricted pickle loading is disabled"):
+        load_checkpoint(tmp_path / "model.pt")
+    assert len(calls) == 1
+    assert calls[0]["weights_only"] is True
+
+
 def test_initialize_3ch_from_1ch_checkpoint(tmp_path):
     source_model = UNet3D_NoZDown(in_channels=1, base=16, out_channels=1)
     source_state = source_model.state_dict()

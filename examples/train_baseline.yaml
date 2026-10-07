@@ -1,0 +1,18 @@
+data:
+  manifest: /path/to/authorized/manifest.json
+initial_checkpoint: /path/to/authorized/initial_3ch.pt
+preprocessing:
+  channels: [mean, std, tsnr]
+  time_window: all
+  normalization: nonzero_zscore
+  depth: 10
+  out_hw: [128, 128]
+training_policy:
+  supervision_depth: 10
+  target_layers: [0, 1, 2]
+  exclude_xy_padding_from_loss: true
+training:
+  seed: 42
+  epochs: 50
+  learning_rate: 0.0001
+  device: cuda

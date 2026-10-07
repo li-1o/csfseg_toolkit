@@ -38,8 +38,11 @@ def load_checkpoint(path: str | Path, map_location: str | torch.device = "cpu") 
     ckpt_path = Path(path).expanduser().resolve()
     try:
         return torch.load(ckpt_path, map_location=map_location, weights_only=True)
-    except TypeError:
-        return torch.load(ckpt_path, map_location=map_location)
+    except TypeError as exc:
+        raise RuntimeError(
+            "This PyTorch version does not support restricted checkpoint loading. "
+            "Upgrade PyTorch; unrestricted pickle loading is disabled."
+        ) from exc
 
 
 def extract_state_dict(checkpoint: Any) -> Mapping[str, torch.Tensor]:

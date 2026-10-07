@@ -28,6 +28,7 @@ class SingleRunConfig:
     model_in_channels: int = 3
     model_base: int = 16
     model_out_channels: int = 1
+    contract_config_path: str | Path | None = None
 
     @property
     def resolved_input_path(self) -> Path:
@@ -160,6 +161,27 @@ def run_single(
             out_channels=config.model_out_channels,
         )
         requires_finetuning = bool(loaded.metadata.get("requires_finetuning") is True)
+        contract = loaded.metadata.get('segmentation_contract')
+        if config.contract_config_path:
+            import yaml
+            from csfseg.training import contract_from_config
+            requested = contract_from_config(yaml.safe_load(Path(config.contract_config_path).read_text()))
+            if requested != contract:
+                raise ValueError('Prediction config does not match checkpoint segmentation contract')
+        if contract:
+            import nibabel as nib
+            from csfseg.training import contract_from_config
+            validated = contract_from_config({'preprocessing': contract['preprocessing'],
+                'training_policy': contract})
+            if validated != contract:
+                raise ValueError('Unsupported checkpoint segmentation contract')
+            if nib.aff2axcodes(reference_img.affine)[2] != 'S':
+                raise ValueError('Checkpoint requires z=0 inferior; reorientation is not automatic')
+            if any(v > 128 for v in reference_img.shape[:2]):
+                raise ValueError('Checkpoint baseline disallows XY cropping')
+            if not np.isfinite(fmri_data).all():
+                raise ValueError('Nonfinite input data')
+        candidate_layers = tuple(contract['target_layers']) if contract else bottom.candidate_layers
         log_values(
             logger,
             "model",
@@ -183,6 +205,13 @@ def run_single(
             tuple(int(v) for v in reference_img.shape[:3]),
             threshold=config.threshold,
         )
+        raw_mask_full = restored.mask_full.copy()
+        if contract:
+            # Retain raw probabilities/mask for QC; deliver target-only final mask.
+            allowed = np.isin(np.arange(bottom.depth), candidate_layers)
+            restored.mask_patch[~allowed] = 0
+            restored.mask_bottom[~allowed] = 0
+            restored.mask_full[:, :, bottom.z_start:bottom.z_stop][:, :, ~allowed] = 0
         log_values(
             logger,
             "prediction",
@@ -195,6 +224,9 @@ def run_single(
         )
 
     with log_stage(logger, "save_outputs"):
+        if contract:
+            save_mask_like(raw_mask_full, reference_img,
+                out_dir / 'masks' / f'{output_id}_csf_mask_bottom10_raw.nii.gz')
         prob_path = save_probability_like(
             restored.probability_full,
             reference_img,
@@ -217,7 +249,7 @@ def run_single(
     with log_stage(logger, "prediction_qc"):
         component_analysis = analyze_mask_layers(
             restored.mask_bottom,
-            layers=bottom.candidate_layers,
+            layers=candidate_layers,
             min_valid_voxels=config.min_valid_voxels,
         )
         prediction_qc_path = plot_prediction_qc(
@@ -225,7 +257,7 @@ def run_single(
             restored.probability_bottom,
             restored.mask_bottom,
             out_dir / "qc" / f"{output_id}_prediction_qc.png",
-            layers=bottom.candidate_layers,
+            layers=candidate_layers,
             component_analysis=component_analysis,
         )
         auto_layer = normalize_layer_name(component_analysis.auto_layer)

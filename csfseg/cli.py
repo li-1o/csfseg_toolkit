@@ -14,6 +14,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="csfseg", description="CSF segmentation toolkit for preprocessed 4D fMRI.")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    prepare = sub.add_parser('prepare-training', help='Verify pairs and split by participant identity.')
+    prepare.add_argument('--manifest', required=True)
+    prepare.add_argument('--identity-csv', required=True)
+    prepare.add_argument('--output', required=True)
+    prepare.add_argument('--seed', type=int, default=42)
+    prepare.add_argument('--val-fraction', type=float, default=0.2)
+    train_parser = sub.add_parser('train', help='Fine-tune the three-channel model.')
+    train_parser.add_argument('--config', required=True)
+    train_parser.add_argument('--out-dir', required=True)
+    train_parser.add_argument('--smoke', action='store_true', help='Only two train cases and one validation case.')
+    train_parser.add_argument('--resume', help='Resume last.pt in the same output directory.')
+
     check_manifest = sub.add_parser("check-manifest", help="Validate an input path file without running the model.")
     check_manifest.add_argument(
         "--input-paths",
@@ -61,6 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
     predict.add_argument("--input", required=True, help="Preprocessed 4D fMRI NIfTI file.")
     predict.add_argument("--out-dir", required=True, help="Output directory for masks and probabilities.")
     predict.add_argument("--checkpoint", required=True, help="3-channel model checkpoint.")
+    predict.add_argument('--config', help='Optional shared training YAML; must match checkpoint contract.')
     predict.add_argument(
         "--output-id",
         help="Optional output prefix. Defaults to the input filename without .nii/.nii.gz.",
@@ -170,6 +183,16 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.command in ('prepare-training', 'train'):
+        import json
+        from csfseg.training import prepare_manifest, train
+        if args.command == 'prepare-training':
+            result = prepare_manifest(args.manifest, args.identity_csv, args.output, args.seed, args.val_fraction)
+        else:
+            result = train(args.config, args.out_dir, smoke=args.smoke, resume=args.resume)
+        print(json.dumps(result, indent=2))
+        return 0
 
     if args.command == "check-manifest":
         out_dir = ensure_out_dir(args.out_dir)
@@ -319,6 +342,7 @@ def _run_predict(args: argparse.Namespace) -> int:
         out_dir=args.out_dir,
         checkpoint=args.checkpoint,
         output_id=args.output_id,
+        contract_config_path=args.config,
         device=args.device,
         threshold=args.threshold,
         min_valid_voxels=args.min_valid_voxels,
@@ -353,7 +377,7 @@ def _run_predict(args: argparse.Namespace) -> int:
     print(f"Mask voxels: {result.mask_voxels}")
     print(f"Auto selected layer: {result.auto_layer or 'none'}")
     print(f"Wrote probability map: {result.probability_path}")
-    print(f"Wrote bottom10 mask: {result.mask_path}")
+    print(f"Wrote final mask: {result.mask_path}")
     print(f"Wrote prediction QC: {result.prediction_qc_path}")
     print(f"Wrote voxel table: {result.voxel_table_path}")
     print(f"Wrote selection template: {result.selection_template_path}")
